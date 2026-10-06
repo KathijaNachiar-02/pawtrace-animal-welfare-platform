@@ -2,8 +2,10 @@ from fastapi import FastAPI
 
 from app.db.database import Base, engine
 from app.models.animal import Animal
+from app.models.animal_passport import AnimalPassport
 from app.models.report import Report
 from app.models.user import User
+from app.routes.animal_passports import router as animal_passports_router
 from app.routes.animals import router as animals_router
 from app.routes.reports import router as reports_router
 from app.routes.users import router as users_router
@@ -17,6 +19,7 @@ app = FastAPI(
 
 
 app.include_router(animals_router)
+app.include_router(animal_passports_router)
 app.include_router(reports_router)
 app.include_router(users_router)
 
