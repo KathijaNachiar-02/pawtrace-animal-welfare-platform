@@ -5,6 +5,7 @@ from app.models.animal import Animal
 from app.models.report import Report
 from app.models.user import User
 from app.routes.reports import router as reports_router
+from app.routes.users import router as users_router
 
 app = FastAPI(
     title="PawTrace API",
@@ -12,6 +13,7 @@ app = FastAPI(
     version="1.0.0",
 )
 app.include_router(reports_router)
+app.include_router(users_router)
 
 @app.get("/")
 def root():
