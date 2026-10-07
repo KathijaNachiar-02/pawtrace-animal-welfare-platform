@@ -1,5 +1,4 @@
-from fastapi import FastAPI
-
+from fastapi import Depends, FastAPI
 from app.db.database import Base, engine
 from app.models.animal import Animal
 from app.models.animal_passport import AnimalPassport
@@ -9,7 +8,7 @@ from app.routes.animal_passports import router as animal_passports_router
 from app.routes.animals import router as animals_router
 from app.routes.reports import router as reports_router
 from app.routes.users import router as users_router
-
+from app.core.security import get_current_user
 
 app = FastAPI(
     title="PawTrace API",
@@ -30,8 +29,11 @@ def root():
 
 
 @app.get("/api/v1/health")
-def health_check():
-    return {"status": "healthy"}
+def health_check(current_user: dict = Depends(get_current_user)):
+    return {
+        "status": "healthy",
+        "user": current_user.get("preferred_username"),
+    }
 
 
 @app.post("/api/v1/database/init")
