@@ -55,7 +55,9 @@ export default function CreateAnimalPage() {
       return;
     }
 
-    if (!["image/jpeg", "image/png"].includes(file.type)) {
+    if (
+      !["image/jpeg", "image/png"].includes(file.type)
+    ) {
       setPhoto(null);
 
       setMessage(
@@ -86,7 +88,6 @@ export default function CreateAnimalPage() {
     setPhoto(file);
 
     setMessage("");
-
     setMessageType("");
   }
 
@@ -128,9 +129,7 @@ export default function CreateAnimalPage() {
     event.preventDefault();
 
     setIsSubmitting(true);
-
     setMessage("");
-
     setMessageType("");
 
     try {
@@ -177,9 +176,12 @@ export default function CreateAnimalPage() {
        *
        * Later this will come from Keycloak.
        */
-
       const reporterId =
         "0ae05cb6-ef23-487f-9d94-62422110e552";
+
+      // --------------------------------------------------
+      // STEP 1: Create the report
+      // --------------------------------------------------
 
       const response = await fetch(
         "http://localhost:8000/api/v1/reports/",
@@ -237,17 +239,60 @@ export default function CreateAnimalPage() {
         createdReport
       );
 
-      /*
-       * Store the created report.
-       *
-       * This changes the page from the
-       * form to the confirmation screen.
-       */
+      // --------------------------------------------------
+      // STEP 2: Upload the photo to MinIO
+      // --------------------------------------------------
+
+      if (photo) {
+        const photoFormData = new FormData();
+
+        photoFormData.append("photo", photo);
+
+        const photoResponse = await fetch(
+          `http://localhost:8000/api/v1/reports/${createdReport.id}/photo`,
+          {
+            method: "POST",
+            body: photoFormData,
+          }
+        );
+
+        if (!photoResponse.ok) {
+          let errorMessage =
+            "Report was created, but the photo upload failed.";
+
+          try {
+            const photoErrorData =
+              await photoResponse.json();
+
+            if (
+              typeof photoErrorData.detail === "string"
+            ) {
+              errorMessage =
+                photoErrorData.detail;
+            }
+          } catch {
+            // Keep the default error message.
+          }
+
+          throw new Error(errorMessage);
+        }
+
+        const uploadedPhoto =
+          await photoResponse.json();
+
+        console.log(
+          "Photo uploaded successfully:",
+          uploadedPhoto
+        );
+      }
+
+      // --------------------------------------------------
+      // STEP 3: Show success screen
+      // --------------------------------------------------
 
       setSubmittedReport(createdReport);
 
       setMessage("");
-
       setMessageType("");
     } catch (error) {
       console.error(
@@ -272,8 +317,8 @@ export default function CreateAnimalPage() {
    * SUCCESS SCREEN
    * ========================================================
    *
-   * Once the report has been created, do not show
-   * the filled-in form again.
+   * Once the report has been created and the photo has
+   * been uploaded successfully, show the confirmation screen.
    */
 
   if (submittedReport) {
@@ -374,13 +419,16 @@ export default function CreateAnimalPage() {
             {/* ACTION BUTTONS */}
 
             <div className="mt-8 grid gap-3 sm:grid-cols-2">
-              <Link
-                href={`/reports/${submittedReport.id}`}
+              <button
+                type="button"
+                onClick={() => {
+                  window.location.href = `/reports/${submittedReport.id}`;
+                }}
                 className="inline-flex items-center justify-center gap-2 rounded-xl bg-green-700 px-5 py-3 text-sm font-semibold text-white transition hover:bg-green-800"
               >
                 <FileText size={18} />
                 View Report
-              </Link>
+              </button>
 
               <button
                 type="button"
@@ -576,8 +624,8 @@ export default function CreateAnimalPage() {
             </label>
 
             <p className="mt-3 text-xs text-gray-500">
-              Photo storage will be connected to MinIO
-              in the next step.
+              Photo will be securely stored with your
+              report.
             </p>
           </section>
 
@@ -874,7 +922,7 @@ export default function CreateAnimalPage() {
           <div className="rounded-xl border border-blue-200 bg-blue-50 px-5 py-4">
             <p className="text-sm font-medium text-blue-900">
               You don&apos;t need to know the animal&apos;s
-              breed, age, sex, or medical details. Just tell
+              breed, age, or medical details. Just tell
               us what you can observe.
             </p>
           </div>
@@ -882,8 +930,20 @@ export default function CreateAnimalPage() {
           {/* ERROR MESSAGE */}
 
           {message && (
-            <div className="rounded-xl border border-red-200 bg-red-50 px-5 py-4">
-              <p className="text-sm font-medium text-red-800">
+            <div
+              className={`rounded-xl border px-5 py-4 ${
+                messageType === "success"
+                  ? "border-green-200 bg-green-50"
+                  : "border-red-200 bg-red-50"
+              }`}
+            >
+              <p
+                className={`text-sm font-medium ${
+                  messageType === "success"
+                    ? "text-green-800"
+                    : "text-red-800"
+                }`}
+              >
                 {message}
               </p>
             </div>

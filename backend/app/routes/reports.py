@@ -7,6 +7,7 @@ from fastapi import (
     Depends,
     File,
     HTTPException,
+    Response,
     UploadFile,
     status,
 )
@@ -27,25 +28,7 @@ router = APIRouter(
 )
 
 
-# =========================================================
-# GENERATE HUMAN-READABLE REPORT NUMBER
-# =========================================================
-
 def generate_report_number(db: Session) -> str:
-    """
-    Generate a concurrency-safe, human-readable Report ID.
-
-    PostgreSQL sequence is used for the numeric part.
-
-    Examples:
-        RPT-2026-000001
-        RPT-2026-000002
-        RPT-2026-000003
-
-    The PostgreSQL sequence guarantees that two simultaneous
-    requests do not generate the same number.
-    """
-
     year = datetime.utcnow().year
 
     next_number = db.execute(
@@ -55,9 +38,9 @@ def generate_report_number(db: Session) -> str:
     return f"RPT-{year}-{next_number:06d}"
 
 
-# =========================================================
+# ============================================================
 # CREATE REPORT
-# =========================================================
+# ============================================================
 
 @router.post(
     "/",
@@ -68,27 +51,6 @@ def create_report(
     report: ReportCreate,
     db: Session = Depends(get_db),
 ):
-    """
-    Create a new animal welfare report submitted by a citizen.
-
-    Workflow:
-
-    Citizen submits report
-        ↓
-    PostgreSQL generates internal UUID
-        ↓
-    PostgreSQL sequence generates Report Number
-        ↓
-    Example: RPT-2026-000003
-        ↓
-    animal_id = NULL
-        ↓
-    status = PENDING
-        ↓
-    NGO verifies later
-    """
-
-    # Generate concurrency-safe human-readable Report ID
     report_number = generate_report_number(db)
 
     new_report = Report(
@@ -102,15 +64,17 @@ def create_report(
     )
 
     db.add(new_report)
+
     db.commit()
+
     db.refresh(new_report)
 
     return new_report
 
 
-# =========================================================
+# ============================================================
 # GET ALL REPORTS
-# =========================================================
+# ============================================================
 
 @router.get(
     "/",
@@ -119,12 +83,6 @@ def create_report(
 def get_reports(
     db: Session = Depends(get_db),
 ):
-    """
-    Get all reports.
-
-    Reports are returned from newest to oldest.
-    """
-
     reports = (
         db.query(Report)
         .order_by(Report.created_at.desc())
@@ -134,9 +92,9 @@ def get_reports(
     return reports
 
 
-# =========================================================
+# ============================================================
 # GET SINGLE REPORT
-# =========================================================
+# ============================================================
 
 @router.get(
     "/{report_id}",
@@ -146,10 +104,6 @@ def get_report(
     report_id: UUID,
     db: Session = Depends(get_db),
 ):
-    """
-    Get a single report using its internal UUID.
-    """
-
     report = (
         db.query(Report)
         .filter(Report.id == report_id)
@@ -165,9 +119,9 @@ def get_report(
     return report
 
 
-# =========================================================
+# ============================================================
 # DELETE REPORT
-# =========================================================
+# ============================================================
 
 @router.delete(
     "/{report_id}",
@@ -176,15 +130,6 @@ def delete_report(
     report_id: UUID,
     db: Session = Depends(get_db),
 ):
-    """
-    Delete a report.
-
-    Mainly useful during development/testing.
-
-    In the final production system, reports may instead
-    be archived rather than permanently deleted.
-    """
-
     report = (
         db.query(Report)
         .filter(Report.id == report_id)
@@ -198,6 +143,7 @@ def delete_report(
         )
 
     db.delete(report)
+
     db.commit()
 
     return {
@@ -206,9 +152,9 @@ def delete_report(
     }
 
 
-# =========================================================
+# ============================================================
 # UPLOAD REPORT PHOTO
-# =========================================================
+# ============================================================
 
 @router.post(
     "/{report_id}/photo",
@@ -219,25 +165,9 @@ def upload_report_photo(
     photo: UploadFile = File(...),
     db: Session = Depends(get_db),
 ):
-    """
-    Upload a photo for an existing animal welfare report.
-
-    Workflow:
-
-    Report already exists
-        ↓
-    Validate report
-        ↓
-    Validate image type
-        ↓
-    Upload image to MinIO
-        ↓
-    Save photo information in PostgreSQL
-    """
-
-    # -----------------------------------------------------
+    # --------------------------------------------------------
     # Check that the report exists
-    # -----------------------------------------------------
+    # --------------------------------------------------------
 
     report = (
         db.query(Report)
@@ -251,9 +181,9 @@ def upload_report_photo(
             detail="Report not found",
         )
 
-    # -----------------------------------------------------
-    # Validate image type
-    # -----------------------------------------------------
+    # --------------------------------------------------------
+    # Validate file type
+    # --------------------------------------------------------
 
     allowed_types = {
         "image/jpeg",
@@ -267,36 +197,41 @@ def upload_report_photo(
             detail="Only JPEG, PNG, and WebP images are allowed",
         )
 
-    # -----------------------------------------------------
-    # Get file extension
-    # -----------------------------------------------------
+    # --------------------------------------------------------
+    # Determine file extension
+    # --------------------------------------------------------
 
-    extension = Path(photo.filename or "").suffix.lower()
+    extension = Path(
+        photo.filename or ""
+    ).suffix.lower()
 
     if not extension:
         if photo.content_type == "image/jpeg":
             extension = ".jpg"
+
         elif photo.content_type == "image/png":
             extension = ".png"
+
         else:
             extension = ".webp"
 
-    # -----------------------------------------------------
-    # Generate unique MinIO object key
-    # -----------------------------------------------------
+    # --------------------------------------------------------
+    # Create unique MinIO object key
+    # --------------------------------------------------------
 
-    object_key = f"reports/{report_id}/{uuid4()}{extension}"
+    object_key = (
+        f"reports/{report_id}/{uuid4()}{extension}"
+    )
 
-    # -----------------------------------------------------
+    # --------------------------------------------------------
     # Upload image to MinIO
-    # -----------------------------------------------------
+    # --------------------------------------------------------
 
     try:
-        # Move to the end of the file to determine its size
         photo.file.seek(0, 2)
+
         file_size = photo.file.tell()
 
-        # Return to the beginning before uploading
         photo.file.seek(0)
 
         minio_client.put_object(
@@ -313,9 +248,9 @@ def upload_report_photo(
             detail=f"Photo upload failed: {exc}",
         )
 
-    # -----------------------------------------------------
+    # --------------------------------------------------------
     # Save photo metadata in PostgreSQL
-    # -----------------------------------------------------
+    # --------------------------------------------------------
 
     report_photo = ReportPhoto(
         report_id=report_id,
@@ -325,18 +260,100 @@ def upload_report_photo(
     )
 
     db.add(report_photo)
-    db.commit()
-    db.refresh(report_photo)
 
-    # -----------------------------------------------------
-    # Return photo information
-    # -----------------------------------------------------
+    db.commit()
+
+    db.refresh(report_photo)
 
     return {
         "id": report_photo.id,
         "report_id": report_photo.report_id,
-        "object_key": report_photo.object_key,
+        "object_key": object_key,
         "original_filename": report_photo.original_filename,
         "content_type": report_photo.content_type,
         "created_at": report_photo.created_at,
     }
+
+
+# ============================================================
+# GET REPORT PHOTO
+# ============================================================
+
+@router.get(
+    "/{report_id}/photo",
+)
+def get_report_photo(
+    report_id: UUID,
+    db: Session = Depends(get_db),
+):
+    # --------------------------------------------------------
+    # Check that the report exists
+    # --------------------------------------------------------
+
+    report = (
+        db.query(Report)
+        .filter(Report.id == report_id)
+        .first()
+    )
+
+    if report is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Report not found",
+        )
+
+    # --------------------------------------------------------
+    # Find the photo metadata
+    # --------------------------------------------------------
+
+    report_photo = (
+        db.query(ReportPhoto)
+        .filter(
+            ReportPhoto.report_id == report_id
+        )
+        .order_by(
+            ReportPhoto.created_at.desc()
+        )
+        .first()
+    )
+
+    if report_photo is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No photo found for this report",
+        )
+
+    # --------------------------------------------------------
+    # Retrieve the actual image from MinIO
+    # --------------------------------------------------------
+
+    try:
+        response = minio_client.get_object(
+            settings.minio_bucket,
+            report_photo.object_key,
+        )
+
+        image_data = response.read()
+
+        response.close()
+        response.release_conn()
+
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Photo retrieval failed: {exc}",
+        )
+
+    # --------------------------------------------------------
+    # Return the actual image
+    # --------------------------------------------------------
+
+    return Response(
+        content=image_data,
+        media_type=report_photo.content_type,
+        headers={
+            "Content-Disposition": (
+                f'inline; filename="{report_photo.original_filename}"'
+            )
+        },
+    )
