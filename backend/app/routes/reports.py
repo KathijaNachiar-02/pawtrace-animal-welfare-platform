@@ -1,12 +1,23 @@
 from datetime import datetime
-from uuid import UUID
+from pathlib import Path
+from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    HTTPException,
+    UploadFile,
+    status,
+)
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
+from app.core.minio_client import minio_client
 from app.db.database import get_db
 from app.models.report import Report
+from app.models.report_photo import ReportPhoto
 from app.schemas.report import ReportCreate, ReportResponse
 
 
@@ -192,4 +203,140 @@ def delete_report(
     return {
         "message": "Report deleted successfully",
         "report_id": report_id,
+    }
+
+
+# =========================================================
+# UPLOAD REPORT PHOTO
+# =========================================================
+
+@router.post(
+    "/{report_id}/photo",
+    status_code=status.HTTP_201_CREATED,
+)
+def upload_report_photo(
+    report_id: UUID,
+    photo: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    """
+    Upload a photo for an existing animal welfare report.
+
+    Workflow:
+
+    Report already exists
+        ↓
+    Validate report
+        ↓
+    Validate image type
+        ↓
+    Upload image to MinIO
+        ↓
+    Save photo information in PostgreSQL
+    """
+
+    # -----------------------------------------------------
+    # Check that the report exists
+    # -----------------------------------------------------
+
+    report = (
+        db.query(Report)
+        .filter(Report.id == report_id)
+        .first()
+    )
+
+    if report is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Report not found",
+        )
+
+    # -----------------------------------------------------
+    # Validate image type
+    # -----------------------------------------------------
+
+    allowed_types = {
+        "image/jpeg",
+        "image/png",
+        "image/webp",
+    }
+
+    if photo.content_type not in allowed_types:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only JPEG, PNG, and WebP images are allowed",
+        )
+
+    # -----------------------------------------------------
+    # Get file extension
+    # -----------------------------------------------------
+
+    extension = Path(photo.filename or "").suffix.lower()
+
+    if not extension:
+        if photo.content_type == "image/jpeg":
+            extension = ".jpg"
+        elif photo.content_type == "image/png":
+            extension = ".png"
+        else:
+            extension = ".webp"
+
+    # -----------------------------------------------------
+    # Generate unique MinIO object key
+    # -----------------------------------------------------
+
+    object_key = f"reports/{report_id}/{uuid4()}{extension}"
+
+    # -----------------------------------------------------
+    # Upload image to MinIO
+    # -----------------------------------------------------
+
+    try:
+        # Move to the end of the file to determine its size
+        photo.file.seek(0, 2)
+        file_size = photo.file.tell()
+
+        # Return to the beginning before uploading
+        photo.file.seek(0)
+
+        minio_client.put_object(
+            settings.minio_bucket,
+            object_key,
+            photo.file,
+            length=file_size,
+            content_type=photo.content_type,
+        )
+
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Photo upload failed: {exc}",
+        )
+
+    # -----------------------------------------------------
+    # Save photo metadata in PostgreSQL
+    # -----------------------------------------------------
+
+    report_photo = ReportPhoto(
+        report_id=report_id,
+        object_key=object_key,
+        original_filename=photo.filename or "photo",
+        content_type=photo.content_type,
+    )
+
+    db.add(report_photo)
+    db.commit()
+    db.refresh(report_photo)
+
+    # -----------------------------------------------------
+    # Return photo information
+    # -----------------------------------------------------
+
+    return {
+        "id": report_photo.id,
+        "report_id": report_photo.report_id,
+        "object_key": report_photo.object_key,
+        "original_filename": report_photo.original_filename,
+        "content_type": report_photo.content_type,
+        "created_at": report_photo.created_at,
     }
