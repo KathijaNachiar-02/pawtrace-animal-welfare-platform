@@ -16,9 +16,11 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.minio_client import minio_client
+from app.core.security import get_current_user
 from app.db.database import get_db
 from app.models.report import Report
 from app.models.report_photo import ReportPhoto
+from app.models.user import User
 from app.schemas.report import ReportCreate, ReportResponse
 
 
@@ -49,13 +51,34 @@ def generate_report_number(db: Session) -> str:
 )
 def create_report(
     report: ReportCreate,
+    current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    keycloak_id = current_user.get("sub")
+
+    if not keycloak_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid user identity",
+        )
+
+    user = (
+        db.query(User)
+        .filter(User.keycloak_id == keycloak_id)
+        .first()
+    )
+
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
     report_number = generate_report_number(db)
 
     new_report = Report(
         report_number=report_number,
-        reporter_id=report.reporter_id,
+        reporter_id=user.id,
         animal_id=None,
         report_type=report.report_type,
         description=report.description,
@@ -165,10 +188,6 @@ def upload_report_photo(
     photo: UploadFile = File(...),
     db: Session = Depends(get_db),
 ):
-    # --------------------------------------------------------
-    # Check that the report exists
-    # --------------------------------------------------------
-
     report = (
         db.query(Report)
         .filter(Report.id == report_id)
@@ -181,10 +200,6 @@ def upload_report_photo(
             detail="Report not found",
         )
 
-    # --------------------------------------------------------
-    # Validate file type
-    # --------------------------------------------------------
-
     allowed_types = {
         "image/jpeg",
         "image/png",
@@ -196,10 +211,6 @@ def upload_report_photo(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Only JPEG, PNG, and WebP images are allowed",
         )
-
-    # --------------------------------------------------------
-    # Determine file extension
-    # --------------------------------------------------------
 
     extension = Path(
         photo.filename or ""
@@ -215,17 +226,9 @@ def upload_report_photo(
         else:
             extension = ".webp"
 
-    # --------------------------------------------------------
-    # Create unique MinIO object key
-    # --------------------------------------------------------
-
     object_key = (
         f"reports/{report_id}/{uuid4()}{extension}"
     )
-
-    # --------------------------------------------------------
-    # Upload image to MinIO
-    # --------------------------------------------------------
 
     try:
         photo.file.seek(0, 2)
@@ -247,10 +250,6 @@ def upload_report_photo(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Photo upload failed: {exc}",
         )
-
-    # --------------------------------------------------------
-    # Save photo metadata in PostgreSQL
-    # --------------------------------------------------------
 
     report_photo = ReportPhoto(
         report_id=report_id,
@@ -286,10 +285,6 @@ def get_report_photo(
     report_id: UUID,
     db: Session = Depends(get_db),
 ):
-    # --------------------------------------------------------
-    # Check that the report exists
-    # --------------------------------------------------------
-
     report = (
         db.query(Report)
         .filter(Report.id == report_id)
@@ -301,10 +296,6 @@ def get_report_photo(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Report not found",
         )
-
-    # --------------------------------------------------------
-    # Find the photo metadata
-    # --------------------------------------------------------
 
     report_photo = (
         db.query(ReportPhoto)
@@ -323,10 +314,6 @@ def get_report_photo(
             detail="No photo found for this report",
         )
 
-    # --------------------------------------------------------
-    # Retrieve the actual image from MinIO
-    # --------------------------------------------------------
-
     try:
         response = minio_client.get_object(
             settings.minio_bucket,
@@ -343,10 +330,6 @@ def get_report_photo(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Photo retrieval failed: {exc}",
         )
-
-    # --------------------------------------------------------
-    # Return the actual image
-    # --------------------------------------------------------
 
     return Response(
         content=image_data,
