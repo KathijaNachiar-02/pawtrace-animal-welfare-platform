@@ -10,7 +10,6 @@ from app.core.config import settings
 
 security = HTTPBearer()
 
-
 KEYCLOAK_ISSUER = (
     f"{settings.keycloak_url}/realms/{settings.keycloak_realm}"
 )
@@ -18,7 +17,6 @@ KEYCLOAK_ISSUER = (
 KEYCLOAK_JWKS_URL = (
     f"{KEYCLOAK_ISSUER}/protocol/openid-connect/certs"
 )
-
 
 jwks_client = PyJWKClient(KEYCLOAK_JWKS_URL)
 

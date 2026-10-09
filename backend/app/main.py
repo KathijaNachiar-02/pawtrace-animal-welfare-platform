@@ -1,6 +1,8 @@
-from fastapi import FastAPI
+
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.core.security import get_current_user
 from app.db.database import Base, engine
 from app.models.animal import Animal
 from app.models.report import Report
@@ -15,11 +17,10 @@ app = FastAPI(
     description="Backend API for the PawTrace animal welfare platform",
     version="1.0.0",
 )
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-    ],
+    allow_origins=["http://localhost:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -36,8 +37,13 @@ def root():
 
 
 @app.get("/api/v1/health")
-def health_check():
-    return {"status": "healthy"}
+def health_check(
+    current_user: dict = Depends(get_current_user),
+):
+    return {
+        "status": "healthy",
+        "user": current_user.get("preferred_username"),
+    }
 
 
 @app.post("/api/v1/database/init")
