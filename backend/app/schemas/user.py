@@ -1,14 +1,12 @@
 from datetime import datetime
 from uuid import UUID
-
-from pydantic import BaseModel, ConfigDict
-
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 class UserCreate(BaseModel):
-    email: str
+    email:  EmailStr
     full_name: str
     phone: str | None = None
-    role: str = "CITIZEN"
+    password: str = Field(min_length=8, max_length=128)
 
 
 class UserUpdate(BaseModel):

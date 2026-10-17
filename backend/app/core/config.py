@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     keycloak_url: str = "http://localhost:8080"
     keycloak_realm: str = "pawtrace"
     keycloak_client_id: str = "pawtrace-api"
+    keycloak_admin_client_id: str = "pawtrace-api"
+    keycloak_admin_client_secret: str = ""
 
     model_config = SettingsConfigDict(
         env_file=".env",

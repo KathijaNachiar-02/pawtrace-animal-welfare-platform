@@ -3,18 +3,22 @@
 
 import Link from "next/link";
 
+
 const actions = [
-  { icon: "ðŸ¾", title: "Report an Animal", description: "Report an injured, stray, or vulnerable animal.", href: "/animals/create" },
-  { icon: "ðŸ“‹", title: "My Reports", description: "Track reports you have submitted and their status.", href: "/reports" },
-  { icon: "ðŸ•", title: "Adopt an Animal", description: "Meet animals looking for a safe and loving home.", href: "/animals" },
+  { icon: "\u{1F43E}", title: "Report an Animal", description: "Report an injured, stray, or vulnerable animal.", href: "/animals/create" },
+  { icon: "\u{1F4CB}", title: "My Reports", description: "Track reports you have submitted and their status.", href: "/reports" },
+  { icon: "\u{1F431}", title: "Adopt an Animal", description: "Meet animals looking for a safe and loving home.", href: "/animals" },
 ];
+
 
 export default function CitizenPage() {
   return (
     <main className="min-h-screen bg-slate-50 text-slate-800">
       <header className="border-b border-slate-200 bg-white">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-5">
-          <Link href="/citizen" className="text-2xl font-extrabold text-green-700">ðŸ¾ PawTrace</Link>
+          <Link href="/citizen" className="text-2xl font-extrabold text-green-700">
+{"\u{1F43E}"} PawTrace
+</Link>
           <span className="rounded-full bg-green-100 px-4 py-2 text-sm font-semibold text-green-800">Citizen Portal</span>
         </div>
       </header>
@@ -36,7 +40,7 @@ export default function CitizenPage() {
                 <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-green-50 text-3xl">{action.icon}</div>
                 <h3 className="mt-5 text-xl font-bold text-slate-900 group-hover:text-green-700">{action.title}</h3>
                 <p className="mt-2 leading-6 text-slate-500">{action.description}</p>
-                <span className="mt-5 inline-block font-semibold text-green-700">Open section â†’</span>
+                <span className="mt-5 inline-block font-semibold text-green-700">Open section {"\u2192"}</span>
               </Link>
             ))}
           </div>
@@ -47,7 +51,7 @@ export default function CitizenPage() {
           <p className="mt-2 leading-7 text-slate-600">Accurate reports can help animal welfare teams respond. You can also explore animal profiles and adoption information.</p>
         </section>
 
-        <footer className="py-8 text-center text-sm text-slate-400">PawTrace Â· Caring for animals, together</footer>
+        <footer className="py-8 text-center text-sm text-slate-400">PawTrace {"\u00B7"} Caring for animals, together</footer>
       </div>
     </main>
   );
